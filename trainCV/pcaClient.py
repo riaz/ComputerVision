@@ -4,6 +4,7 @@ from numpy import *
 from pylab import *
 import pca
 import os
+import pickle
 
 dir = "../img/"
 imlist = [f for f in os.listdir(dir) if f.endswith(".jpg")]
@@ -20,6 +21,22 @@ immatrix = array([ array(Image.open(dir+im)).flatten()
 
 #performing pca on the images
 V,S,immean = pca.pca(immatrix)
+
+#pickling the values into a local file
+f = open("pca_models.pkl","wb")
+pickle.dump(immean,f)
+pickle.dump(V,f)
+f.close()
+
+
+#unpickling the values
+f = open("pca_models.pkl","rb")
+#unpickle in the order of pickling
+imean = pickle.load(f)
+V = pickle.load(f)
+f.close()
+
+
 
 #show some images (mean and 7 first modes)
 figure()
