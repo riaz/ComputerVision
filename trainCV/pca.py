@@ -3,7 +3,7 @@
 #Standard dimentionality reduction technique
 
 from PIL import Image
-import numpy as np
+from numpy import *
 
 def pca(X):
     """
@@ -15,7 +15,7 @@ def pca(X):
 
     #center data
     mean_X = X.mean(axis=0)
-    X = X - mean.X
+    X = X - mean_X
 
     if dim>num_data:
         # PCA - compact trick used
