@@ -3,6 +3,8 @@ from scipy.ndimage import measurements,morphology
 from numpy import *
 from PIL import Image
 import argparse
+from matplotlib import pyplot as plt
+import utils
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-c","--color",default="w",help="Detects black or white objects")
@@ -26,3 +28,8 @@ else:
 
 labels,nbr_objects = measurements.label(im)
 print "Number of objects: ", nbr_objects
+
+plt.figure("Binary Morphology Example")
+plt.gray()
+plt.imshow(im)
+plt.show()
