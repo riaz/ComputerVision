@@ -1,6 +1,13 @@
+import sys
 import Tkinter as tkinter
 import time
-from PIL import Image
+from PIL import Image,ImageTk
+import cv2
+from collections import deque
+import imutils
+import numpy as np
+from tkintertable import TableCanvas, TableModel
+from glob import glob
 
 ################################################################################
 
@@ -54,17 +61,199 @@ class Splash:
         self.__root.update_idletasks()
         self.__root.deiconify()
 
+def track(pt):
+    np_xyz = np.array((pt[0],pt[1],0),np.float64).T #xyz list is from file. Not shown here for brevity
+    camera_matrix2 = np.asarray(camera_matrix,np.float64)
+    np_dist_coefs  = np.asarray(dist_coefs[:,:],np.float64)    
+
+    #found,rvecs_new,tvecs_new = cv2.solvePnP(np_xyz, np_corners_first,camera_matrix2,np_dist_coefs)
+    found,rvecs_new,tvecs_new = cv2.solvePnP(np_xyz, pt,camera_matrix2,np_dist_coefs)
+
+    np_rodrigues = np.asarray(rvecs_new[:,:],np.float64)
+    print np_rodrigues.shape
+    rot_matrix = cv2.Rodrigues(np_rodrigues)[0]
+
+    #Fetching the euler rotationn parameters
+    print "Euler_rotation = ",rot_matrix_to_euler(rot_matrix)
+    print "Translation_Matrix = ", tvecs_new
+
+def rot_matrix_to_euler(R):
+    y_rot = asin(R[2][0]) 
+    x_rot = acos(R[2][2]/cos(y_rot))    
+    z_rot = acos(R[0][0]/cos(y_rot))
+    y_rot_angle = y_rot *(180/pi)
+    x_rot_angle = x_rot *(180/pi)
+    z_rot_angle = z_rot *(180/pi)        
+    return x_rot_angle,y_rot_angle,z_rot_angle    
+
+def calibrate():
+    pattern_size = (7, 6)
+    pattern_points = np.zeros( (np.prod(pattern_size), 3), np.float32 )
+    pattern_points[:,:2] = np.indices(pattern_size).T.reshape(-1, 2)
+    pattern_points *= 1.0 #square_size
+
+    h, w = 0, 0
+    count = 0
+    img_names = glob("../img/left*jpg")
+    print img_names
+    for fn in img_names:
+        print 'processing %s...' % fn,
+        img = cv2.imread(fn, 0)
+        h, w = img.shape[:2]
+        found, corners = cv2.findChessboardCorners(img, pattern_size,None)        
+
+        if found:
+            if count == 0:
+                #corners first is a list of the image points for just the first image.
+                #This is the image I know the object points for and use in solvePnP
+                corners_first =  []
+                for val in corners:
+                    corners_first.append(val[0])                
+                np_corners_first = np.asarray(corners_first,np.float64)                
+            count+=1
+            term = ( cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_COUNT, 30, 0.1 )
+            corners2 = cv2.cornerSubPix(img, corners, (11, 11), (-1, -1), term)
+
+            vis = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            cv2.drawChessboardCorners(vis, pattern_size, corners2, found)
+            img_points.append(corners.reshape(-1, 2))
+            obj_points.append(pattern_points)        
+
+            print 'ok'
+
+        rms, camera_matrix, dist_coefs, rvecs, tvecs = cv2.calibrateCamera(obj_points, img_points, (w, h),None,None)
+        print "RMS:", rms
+        print "camera matrix:n", camera_matrix
+        print "distortion coefficients: ", dist_coefs.ravel()    
+        cv2.destroyAllWindows()
+        return camera_matrix,dist_coefs
+
+def show_frame():
+    _, frame = cap.read()
+    frame = cv2.flip(frame, 1)
+    #resize the frame, blur it, and convert it to the HSV
+    # color space
+    frame = imutils.resize(frame, width=800)
+    blurred = cv2.GaussianBlur(frame, (11, 11), 0)
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # construct a mask for the color "green,yellow,blue",
+    #then perform a series of dilations and erosions to remove any small
+    # blobs left in the mask
+
+    greenMask  = cv2.inRange(hsv, greenLower, greenUpper)
+    yellowMask = cv2.inRange(hsv, yellowLower, yellowUpper)
+    blueMask   = cv2.inRange(hsv, blueLower, blueUpper)
+
+    mask = greenMask + yellowMask + blueMask
+
+    mask = cv2.erode(mask, None, iterations=2)
+    mask = cv2.dilate(mask, None, iterations=2)
+
+    # find contours in the mask and initialize the current
+    # (x, y) center of the ball
+    cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE)[-2]
+
+    center = None
+
+    # only proceed if at least one contour was found
+    if len(cnts) > 0:
+            # find the largest contour in the mask, then use
+            # it to compute the minimum enclosing circle and
+            # centroid
+            c = max(cnts, key=cv2.contourArea)
+            ((x, y), radius) = cv2.minEnclosingCircle(c)
+            M = cv2.moments(c)
+
+            center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+    
+            #only proceed if the radius meets a minimum size
+            if radius > 10:
+                    # draw the circle and centroid on the frame,
+                    # then update the list of tracked points
+                    cv2.circle(frame, (int(x), int(y)), int(radius),
+                            (0, 255, 255), 2)
+                    cv2.circle(frame, center, 5, (0, 0, 255), -1)
+
+    # update the points queue
+    pts.appendleft(center)
+
+    if center:
+        sDict = {'rec1': {'Object': 'bot1','X': center[0], 'Y': center[1], 'Z': '-',}}
+        model = table.model
+        model.importDict(sDict)
+        table.redrawTable()        
+        #track(center)   
+    
+    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+    img = Image.fromarray(cv2image)
+    imgtk = ImageTk.PhotoImage(image=img)
+    lmain.imgtk = imgtk
+    lmain.configure(image=imgtk)
+    lmain.after(10, show_frame)
+
+
 if __name__ == '__main__':
     root = tkinter.Tk()
-    #splash = Splash(root,"splash.gif",10)
-    #splash.__enter__();
-    with Splash(root,"splash.gif",2) as splash:    
-        msg = "Have a nice Day".split()
-        listb = tkinter.Listbox(root)
-        for item in msg:
-            listb.insert(0,item)
-        listb.pack()
-    root.mainloop()
+    root.title("Multi-Camera Object Tracking Demo")
+    _splashFile = "splash.gif"
+
+    with Splash(root, _splashFile, 2) as splash:    
         
-    
+        width, height = 800, 600
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+
+        ####################################
+
+        greenLower = (29, 86, 6)
+        greenUpper = (64, 255, 255)
+
+        yellowLower = (20, 100, 100)
+        yellowUpper = (30, 255, 255)
+
+        blueLower = (100,100,100)
+        blueUpper = (120,255,255)
+
+        pts = deque(maxlen=64)
+
+        obj_points = []
+        img_points = []
+
+        ####################################
+
+        root.bind('<Escape>', lambda e: root.quit())
+
+        camera_matrix,dist_coefs = calibrate()
+
+        contentPane = tkinter.Frame(root)
+        contentPane.pack()
+
+        mainFrame = tkinter.Frame(contentPane)
+        mainFrame.pack(side=tkinter.TOP,fill=tkinter.BOTH,expand=tkinter.YES,)
+        cameraFrame = tkinter.Frame(mainFrame,height=600,width=800,)
+
+        cameraFrame.pack(side=tkinter.LEFT,fill=tkinter.BOTH,expand=tkinter.YES)
+        
+        lmain = tkinter.Label(cameraFrame)
+        lmain.pack()
+
+        propFrame = tkinter.Frame(mainFrame,height=600,width=200,background="white")
+        propFrame.pack(side=tkinter.RIGHT,fill=tkinter.BOTH,expand=tkinter.YES)
+
+        trackFrame = tkinter.Frame(propFrame,height=300,width=200)
+        trackFrame.pack(side=tkinter.TOP,fill=tkinter.BOTH,expand=tkinter.YES)
+
+        mapFrame = tkinter.Frame(propFrame,height=300,width=200,background="white")
+        mapFrame.pack(side=tkinter.TOP,fill=tkinter.BOTH,expand=tkinter.YES)
+
+        model = TableModel()
+        table = TableCanvas(trackFrame,model=model)
+        table.createTableFrame()
+     
+show_frame()
+root.mainloop()
     
