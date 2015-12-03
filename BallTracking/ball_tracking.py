@@ -127,7 +127,7 @@ while True:
 		ax.plot_surface(c[0::],c[1::],c[2::]),plt.show()
 		"""
 
-		print c.shape
+		#print c.shape
 
 		#x = np.delete(c, np.s_[1:], 2)
 		#x = x.reshape(c.shape[0],c.shape[1])
@@ -136,7 +136,7 @@ while True:
 		objPts = np.array([[1,2,3]],dtype=np.float32)
 		imgPts = np.array([[1,2]],dtype=np.float32)
 
-		    
+				    
 		#finding the rotation and translation vectors
 		#params:    ObjectPoints , ImagePoint
 		rvecs, tvecs,_ = cv2.solvePnPRansac( objPts, imgPts , mtx, dist)

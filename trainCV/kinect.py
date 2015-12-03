@@ -1,7 +1,10 @@
+#function gives the center pixels
+
 #import the necessary modules
 import freenect
 import cv2
 import numpy as np
+import pickle
  
 #function to get RGB image from kinect
 def get_video():
@@ -12,7 +15,7 @@ def get_video():
 #function to get depth image from kinect
 def get_depth():
     array,_ = freenect.sync_get_depth()
-    array = array.astype(np.uint8)
+    #array = array.astype(np.uint8)
     return array
  
 if __name__ == "__main__":
@@ -21,10 +24,18 @@ if __name__ == "__main__":
         frame = get_video()
         #get a frame from depth sensor
         depth = get_depth()
+
+        X,Y = depth.shape
+        print depth[X/2][Y/2]
+        
         #display RGB image
         cv2.imshow('RGB image',frame)
         #display depth image
         cv2.imshow('Depth image',depth)
+
+        #print frame[0]
+        #print depth[0]
+    
  
         # quit program when 'esc' key is pressed
         k = cv2.waitKey(5) & 0xFF

@@ -1,21 +1,19 @@
-import sys
 import Tkinter as tkinter
 import time
 from PIL import Image, ImageTk
 import cv2
-from collections import deque
-import imutils
 import numpy as np
 from tkintertable import TableCanvas, TableModel
 from glob import glob
 import freenect
 from math import *
 
+KNOWN_WIDTH = 7.3  # inches
+KNOWN_HEIGHT = 7.3  # inches
 
 ################################################################################
 
 def find_marker(image):
-    print image.shape
     #convert the image to grayscale, blur it and detect the edges
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -29,6 +27,9 @@ def find_marker(image):
     c = max(cnts, key=cv2.contourArea)
 
     return cv2.minAreaRect(c)  #we can mark this region in the image
+
+def distance_from_camera(wx, fx, vx):
+    return (wx * fx) / vx
 
 
 class Splash:
@@ -141,15 +142,9 @@ def calibrate():
             img_points.append(corners.reshape(-1, 2))
             obj_points.append(pattern_points)
 
-            # print 'ok'
-
         rms, camera_matrix, dist_coefs, rvecs, tvecs = cv2.calibrateCamera(obj_points, img_points, (w, h), None, None)
 
-        # print "RMS:", rms
-        print "camera matrix:n", camera_matrix
-        # print "distortion coefficients: ", dist_coefs.ravel()
-
-        cv2.destroyAllWindows()
+        #cv2.destroyAllWindows()
         return camera_matrix, dist_coefs
 
 
@@ -164,72 +159,46 @@ def show_frame():
     # resize the frame, blur it, and convert it to the HSV
     # color space
 
-    # frame = imutils.resize(frame, width=800)
 
     blurred = cv2.GaussianBlur(frame, (11, 11), 0)
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    # construct a mask for the color "green,yellow,blue",
-    # then perform a series of dilations and erosions to remove any small
-    # blobs left in the mask
+    fx = float(camera_matrix[0][0])
+    fy = float(camera_matrix[1][1])
 
-    greenMask = cv2.inRange(hsv, greenLower, greenUpper)
-    yellowMask = cv2.inRange(hsv, yellowLower, yellowUpper)
-    blueMask = cv2.inRange(hsv, blueLower, blueUpper)
+    #finding the marker
+    marker = find_marker(blurred)
 
-    mask = greenMask + yellowMask + blueMask
+    inches = distance_from_camera(KNOWN_WIDTH, fx, marker[1][0])
 
-    mask = cv2.erode(mask, None, iterations=2)
-    mask = cv2.dilate(mask, None, iterations=2)
+    #print "Inches {0}".format(inches)
 
-    # find contours in the mask and initialize the current
-    # (x, y) center of the ball
-    cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
-                            cv2.CHAIN_APPROX_SIMPLE)[-2]
+    box = np.int0(cv2.boxPoints(marker))
+    cv2.drawContours(blurred, [box], -1, (0, 255, 0), 2)
+    cv2.putText(blurred, "%.2fft" % (inches / 12), (blurred.shape[1] - 200, blurred.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX,
+                    2.0, (0, 255, 0), 3)
 
-    center = None
-    c = []
-    # only proceed if at least one contour was found
-    if len(cnts) > 0:
-        # find the largest contour in the mask, then use
-        # it to compute the minimum enclosing circle and
-        # centroid
-        c = max(cnts, key=cv2.contourArea)
-        ((x, y), radius) = cv2.minEnclosingCircle(c)
 
-        # print c
-        M = cv2.moments(c)
-
-        center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-
-        # only proceed if the radius meets a minimum size
-        if radius > 10:
-            # draw the circle and centroid on the frame,
-            # then update the list of tracked points
-            cv2.circle(frame, (int(x), int(y)), int(radius),
-                       (0, 255, 255), 2)
-            cv2.circle(frame, center, 5, (0, 0, 255), -1)
-
-    # update the points queue
-    # pts.appendleft(center)
+    """
+    plt.figure('Check the plot')
+    plt.imshow(blurred)
+    plt.show()
+    """
 
     obj_pts = []
-    img_pts = c
-    if center:
+    img_pts = box
 
-        fx = float(camera_matrix[0][0])
-        fy = float(camera_matrix[1][1])
+    if inches > 0:
 
-        Z = float(dframe[center[1]][center[0]])
-        X = float((Z * center[0])) / fx;
-        Y = float((Z * center[1])) / fy;
+        #Z = inches
+        #X = float((Z * KNOWN_WIDTH)) / fx
+        #Y = float((Z * KNOWN_HEIGHT)) / fy
 
         for pt in img_pts:
-            # print pt
-            Z = float(dframe[pt[0][1]][pt[0][0]])
-            X = float((Z * pt[0][0])) / fx;
-            Y = float((Z * pt[0][1])) / fy;
-            obj_pts.append([X, Y, Z]);
+
+            Z = inches
+            X = float((Z * pt[0])) / fx
+            Y = float((Z * pt[0])) / fy
+            obj_pts.append([X, Y, Z])
 
         w = np.array(obj_pts, np.float64)
         v = np.array(img_pts, np.float64)
@@ -250,7 +219,7 @@ def show_frame():
 
         """
 
-    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+    cv2image = cv2.cvtColor(blurred, cv2.COLOR_BGR2RGBA)
     img = Image.fromarray(cv2image)
     imgtk = ImageTk.PhotoImage(image=img)
     lmain.imgtk = imgtk
