@@ -234,8 +234,8 @@ def show_frame():
         w = np.array(obj_pts, np.float64)
         v = np.array(img_pts, np.float64)
 
-        a, b, c = track(w, v)
-        sDict = {'rec1': {'Object': 'bot1', 'X': X, 'Y': Y, 'Z': Z, 'a': a, 'b': b, 'c': c}}
+        _roll, _pitch, _yaw = track(w, v)
+        sDict = {'rec1': {'Object': 'bot1', 'X': X, 'Y': Y, 'Z': Z, 'Roll': _roll, 'Pitch': _pitch, 'Yaw': _yaw}}
 
         model = table.model
         model.importDict(sDict)
